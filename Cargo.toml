@@ -1,0 +1,31 @@
+[package]
+name = "jenkins-cli"
+version = "0.1.0"
+edition = "2024"
+description = "Read-only command line client for the Jenkins REST API on CloudBees CI"
+license = "AGPL-3.0-only"
+repository = "https://github.com/luke-falvey/jenkins-cli"
+readme = "README.md"
+
+[[bin]]
+name = "jenkins-cli"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive", "env"] }
+humantime = "2.4"
+reqwest = { version = "0.13", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tokio = { version = "1.54", features = ["macros", "rt-multi-thread"] }
+url = "2.5"
+
+[dev-dependencies]
+assert_cmd = "2.2"
+base64 = "0.22"
+predicates = "3.1"
+regex = "1.13"
+serde_norway = "0.9"
+tempfile = "3.27"
+wiremock = "0.6"

@@ -1,0 +1,6 @@
+# Lint settings for `npx @redocly/cli lint openapi/jenkins.yaml`.
+extends:
+  - recommended
+rules:
+  # The server URL is a placeholder for your own CloudBees CI host.
+  no-server-example.com: off
