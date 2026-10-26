@@ -1,0 +1,966 @@
+openapi: 3.0.3
+info:
+  title: Jenkins / CloudBees CI Remote Access API (read-only subset)
+  version: 0.1.0
+  license:
+    name: AGPL-3.0-only
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+  description: |
+    The read-only part of the Jenkins Remote Access API (`.../api/json`)
+    that `jenkins-cli` uses, as served by a CloudBees CI controller or
+    Operations Center.
+
+    Jenkins does not publish an official OpenAPI document, so this one is
+    written by hand from the Jenkins remote access API docs. The test suite
+    builds its mock server from this file, so every example below is also a
+    test fixture.
+
+    Notes on conventions:
+
+    * Items in folders are addressed as `/job/<folder>/job/<name>`. A path
+      parameter marked `x-jenkins-job-path: true` stands for one or more
+      names joined by `/job/` (for example `team-a/job/api-service`).
+    * Most endpoints accept `tree` and `depth` query parameters that choose
+      which fields Jenkins returns. Examples show the fields the CLI asks for.
+    * An example can carry `x-mock-match`, a map of path parameter values.
+      The mock server serves that example only when the request path uses
+      those values; the example without `x-mock-match` is the default.
+servers:
+  - url: https://cloudbees.example.com/{controller}
+    variables:
+      controller:
+        default: my-controller
+        description: Path of the CloudBees CI controller (empty for a plain Jenkins).
+security:
+  - basicAuth: []
+tags:
+  - name: controller
+    description: The controller itself and the current user.
+  - name: jobs
+    description: Jobs, folders and multibranch projects.
+  - name: builds
+    description: Builds of a job and their console logs.
+  - name: queue
+    description: The build queue.
+  - name: nodes
+    description: Agents and the built-in node.
+  - name: views
+    description: Views that group jobs.
+  - name: plugins
+    description: Installed plugins.
+paths:
+  /api/json:
+    get:
+      operationId: getController
+      tags: [controller]
+      summary: Controller overview, including top-level jobs and views.
+      parameters:
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The controller (`hudson.model.Hudson`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Controller'
+              example:
+                _class: hudson.model.Hudson
+                mode: NORMAL
+                nodeName: ''
+                nodeDescription: the Jenkins controller's built-in node
+                numExecutors: 2
+                description: CloudBees CI controller for the platform team
+                quietingDown: false
+                useSecurity: true
+                url: https://cloudbees.example.com/my-controller/
+                jobs:
+                  - _class: com.cloudbees.hudson.plugins.folder.Folder
+                    name: team-a
+                    url: https://cloudbees.example.com/my-controller/job/team-a/
+                  - _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                    name: deploy
+                    url: https://cloudbees.example.com/my-controller/job/deploy/
+                    color: blue
+                  - _class: hudson.model.FreeStyleProject
+                    name: nightly-cleanup
+                    url: https://cloudbees.example.com/my-controller/job/nightly-cleanup/
+                    color: red_anime
+                views:
+                  - _class: hudson.model.AllView
+                    name: all
+                    url: https://cloudbees.example.com/my-controller/
+                  - _class: hudson.model.ListView
+                    name: release
+                    url: https://cloudbees.example.com/my-controller/view/release/
+                primaryView:
+                  _class: hudson.model.AllView
+                  name: all
+                  url: https://cloudbees.example.com/my-controller/
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /whoAmI/api/json:
+    get:
+      operationId: getWhoAmI
+      tags: [controller]
+      summary: The user the request is authenticated as.
+      responses:
+        '200':
+          description: The current user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhoAmI'
+              example:
+                _class: hudson.security.WhoAmI
+                anonymous: false
+                authenticated: true
+                authorities:
+                  - authenticated
+                  - platform-team
+                name: alice
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /job/{jobPath}/api/json:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: A job, folder or multibranch project.
+      parameters:
+        - $ref: '#/components/parameters/jobPath'
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+              examples:
+                pipeline:
+                  summary: A pipeline job with its recent builds.
+                  value:
+                    _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                    name: deploy
+                    fullName: deploy
+                    displayName: deploy
+                    description: Deploys the platform services
+                    url: https://cloudbees.example.com/my-controller/job/deploy/
+                    buildable: true
+                    color: blue
+                    inQueue: false
+                    nextBuildNumber: 43
+                    healthReport:
+                      - description: 'Build stability: 1 out of the last 5 builds failed.'
+                        score: 80
+                    lastBuild:
+                      number: 42
+                      url: https://cloudbees.example.com/my-controller/job/deploy/42/
+                    lastSuccessfulBuild:
+                      number: 42
+                      url: https://cloudbees.example.com/my-controller/job/deploy/42/
+                    lastFailedBuild:
+                      number: 40
+                      url: https://cloudbees.example.com/my-controller/job/deploy/40/
+                    builds:
+                      - _class: org.jenkinsci.plugins.workflow.job.WorkflowRun
+                        number: 42
+                        url: https://cloudbees.example.com/my-controller/job/deploy/42/
+                        result: SUCCESS
+                        building: false
+                        timestamp: 1761400000000
+                        duration: 83000
+                      - _class: org.jenkinsci.plugins.workflow.job.WorkflowRun
+                        number: 41
+                        url: https://cloudbees.example.com/my-controller/job/deploy/41/
+                        result: SUCCESS
+                        building: false
+                        timestamp: 1761390000000
+                        duration: 79500
+                      - _class: org.jenkinsci.plugins.workflow.job.WorkflowRun
+                        number: 40
+                        url: https://cloudbees.example.com/my-controller/job/deploy/40/
+                        result: FAILURE
+                        building: false
+                        timestamp: 1761380000000
+                        duration: 12000
+                folder:
+                  summary: A folder and the items inside it.
+                  x-mock-match:
+                    jobPath: team-a
+                  value:
+                    _class: com.cloudbees.hudson.plugins.folder.Folder
+                    name: team-a
+                    fullName: team-a
+                    displayName: Team A
+                    description: Jobs owned by team A
+                    url: https://cloudbees.example.com/my-controller/job/team-a/
+                    healthReport: []
+                    jobs:
+                      - _class: org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject
+                        name: api-service
+                        url: https://cloudbees.example.com/my-controller/job/team-a/job/api-service/
+                      - _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                        name: integration-tests
+                        url: https://cloudbees.example.com/my-controller/job/team-a/job/integration-tests/
+                        color: yellow
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /job/{jobPath}/{buildNumber}/api/json:
+    get:
+      operationId: getBuild
+      tags: [builds]
+      summary: A single build of a job.
+      parameters:
+        - $ref: '#/components/parameters/jobPath'
+        - $ref: '#/components/parameters/buildNumber'
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The build.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Build'
+              example:
+                _class: org.jenkinsci.plugins.workflow.job.WorkflowRun
+                number: 42
+                id: '42'
+                displayName: '#42'
+                fullDisplayName: 'deploy #42'
+                description: null
+                url: https://cloudbees.example.com/my-controller/job/deploy/42/
+                building: false
+                result: SUCCESS
+                timestamp: 1761400000000
+                duration: 83000
+                estimatedDuration: 80000
+                queueId: 1017
+                actions:
+                  - _class: hudson.model.CauseAction
+                    causes:
+                      - _class: hudson.model.Cause$UserIdCause
+                        shortDescription: Started by user alice
+                        userId: alice
+                        userName: alice
+                  - {}
+                  - _class: hudson.plugins.git.util.BuildData
+                artifacts:
+                  - displayPath: report.html
+                    fileName: report.html
+                    relativePath: target/report.html
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /job/{jobPath}/{buildNumber}/consoleText:
+    get:
+      operationId: getBuildConsoleText
+      tags: [builds]
+      summary: The full console log of a build, as plain text.
+      parameters:
+        - $ref: '#/components/parameters/jobPath'
+        - $ref: '#/components/parameters/buildNumber'
+      responses:
+        '200':
+          description: The console log.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                Started by user alice
+                [Pipeline] Start of Pipeline
+                [Pipeline] node
+                Running on built-in node in /var/jenkins_home/workspace/deploy
+                [Pipeline] sh
+                + ./deploy.sh
+                Deployed 3 services
+                [Pipeline] End of Pipeline
+                Finished: SUCCESS
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /queue/api/json:
+    get:
+      operationId: getQueue
+      tags: [queue]
+      summary: Items waiting in the build queue.
+      parameters:
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Queue'
+              example:
+                _class: hudson.model.Queue
+                discoverableItems: []
+                items:
+                  - _class: hudson.model.Queue$BuildableItem
+                    id: 1018
+                    blocked: false
+                    buildable: true
+                    stuck: false
+                    inQueueSince: 1761400100000
+                    why: Waiting for next available executor
+                    url: queue/item/1018/
+                    task:
+                      _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                      name: deploy
+                      url: https://cloudbees.example.com/my-controller/job/deploy/
+                  - _class: hudson.model.Queue$BlockedItem
+                    id: 1019
+                    blocked: true
+                    buildable: false
+                    stuck: false
+                    inQueueSince: 1761400200000
+                    why: 'Build #12 is already in progress'
+                    url: queue/item/1019/
+                    task:
+                      _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                      name: integration-tests
+                      url: https://cloudbees.example.com/my-controller/job/team-a/job/integration-tests/
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /queue/item/{queueId}/api/json:
+    get:
+      operationId: getQueueItem
+      tags: [queue]
+      summary: A single queue item. Items stay visible for a few minutes after they leave the queue.
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/tree'
+      responses:
+        '200':
+          description: The queue item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueItem'
+              example:
+                _class: hudson.model.Queue$LeftItem
+                id: 1017
+                blocked: false
+                buildable: false
+                stuck: false
+                cancelled: false
+                inQueueSince: 1761399990000
+                why: null
+                url: queue/item/1017/
+                task:
+                  _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                  name: deploy
+                  url: https://cloudbees.example.com/my-controller/job/deploy/
+                executable:
+                  _class: org.jenkinsci.plugins.workflow.job.WorkflowRun
+                  number: 42
+                  url: https://cloudbees.example.com/my-controller/job/deploy/42/
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /computer/api/json:
+    get:
+      operationId: getComputers
+      tags: [nodes]
+      summary: All nodes (agents and the built-in node).
+      parameters:
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The nodes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComputerSet'
+              example:
+                _class: hudson.model.ComputerSet
+                busyExecutors: 1
+                totalExecutors: 6
+                displayName: Nodes
+                computer:
+                  - _class: hudson.model.Hudson$MasterComputer
+                    displayName: Built-In Node
+                    description: the Jenkins controller's built-in node
+                    idle: true
+                    offline: false
+                    temporarilyOffline: false
+                    offlineCauseReason: ''
+                    numExecutors: 2
+                    assignedLabels:
+                      - name: built-in
+                  - _class: hudson.slaves.SlaveComputer
+                    displayName: linux-agent-1
+                    description: Shared Linux agent
+                    idle: false
+                    offline: false
+                    temporarilyOffline: false
+                    offlineCauseReason: ''
+                    numExecutors: 4
+                    assignedLabels:
+                      - name: linux
+                      - name: docker
+                      - name: linux-agent-1
+                  - _class: hudson.slaves.SlaveComputer
+                    displayName: windows-agent-1
+                    description: ''
+                    idle: true
+                    offline: true
+                    temporarilyOffline: true
+                    offlineCauseReason: Disk replacement
+                    numExecutors: 0
+                    assignedLabels:
+                      - name: windows
+                      - name: windows-agent-1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /computer/{nodeName}/api/json:
+    get:
+      operationId: getComputer
+      tags: [nodes]
+      summary: A single node. The built-in node is named `(built-in)`.
+      parameters:
+        - name: nodeName
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The node.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Computer'
+              example:
+                _class: hudson.slaves.SlaveComputer
+                displayName: linux-agent-1
+                description: Shared Linux agent
+                idle: false
+                offline: false
+                temporarilyOffline: false
+                offlineCauseReason: ''
+                numExecutors: 4
+                assignedLabels:
+                  - name: linux
+                  - name: docker
+                  - name: linux-agent-1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /view/{viewName}/api/json:
+    get:
+      operationId: getView
+      tags: [views]
+      summary: A view and the jobs it shows.
+      parameters:
+        - name: viewName
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/View'
+              example:
+                _class: hudson.model.ListView
+                name: release
+                description: Jobs that take part in a release
+                url: https://cloudbees.example.com/my-controller/view/release/
+                jobs:
+                  - _class: org.jenkinsci.plugins.workflow.job.WorkflowJob
+                    name: deploy
+                    url: https://cloudbees.example.com/my-controller/job/deploy/
+                    color: blue
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /pluginManager/api/json:
+    get:
+      operationId: getPlugins
+      tags: [plugins]
+      summary: Installed plugins. Needs `depth=1` (or a `tree`) to include plugin details.
+      parameters:
+        - $ref: '#/components/parameters/tree'
+        - $ref: '#/components/parameters/depth'
+      responses:
+        '200':
+          description: The installed plugins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PluginManager'
+              example:
+                _class: hudson.LocalPluginManager
+                plugins:
+                  - shortName: workflow-job
+                    longName: 'Pipeline: Job'
+                    version: '1520.v56d65e3b_4566'
+                    active: true
+                    enabled: true
+                    hasUpdate: false
+                  - shortName: git
+                    longName: Git plugin
+                    version: 5.7.0
+                    active: true
+                    enabled: true
+                    hasUpdate: true
+                  - shortName: cloudbees-folder
+                    longName: Folders Plugin
+                    version: '6.999.v42253c105443'
+                    active: true
+                    enabled: true
+                    hasUpdate: false
+                  - shortName: ant
+                    longName: Ant Plugin
+                    version: '513.vde9e7b_a_0da_0f'
+                    active: false
+                    enabled: false
+                    hasUpdate: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Username with a password or (recommended) an API token.
+  parameters:
+    tree:
+      name: tree
+      in: query
+      required: false
+      description: Fields to return, for example `jobs[name,url,color]`.
+      schema:
+        type: string
+    depth:
+      name: depth
+      in: query
+      required: false
+      description: How deep to expand nested objects. Defaults to 0.
+      schema:
+        type: integer
+        minimum: 0
+    jobPath:
+      name: jobPath
+      in: path
+      required: true
+      description: |
+        Job name, or a path through folders with the names joined by `/job/`
+        (for example `team-a/job/api-service`). Each name is URL-encoded.
+      x-jenkins-job-path: true
+      schema:
+        type: string
+    buildNumber:
+      name: buildNumber
+      in: path
+      required: true
+      description: A build number or a permalink such as `lastBuild`.
+      schema:
+        type: string
+        pattern: '^([0-9]+|lastBuild|lastCompletedBuild|lastSuccessfulBuild|lastStableBuild|lastUnstableBuild|lastFailedBuild|lastUnsuccessfulBuild)$'
+  responses:
+    Unauthorized:
+      description: Missing or wrong credentials.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: Basic realm="Jenkins"
+      content:
+        text/html:
+          schema:
+            type: string
+          example: <html><body><h2>HTTP ERROR 401 Unauthorized</h2></body></html>
+    Forbidden:
+      description: The user lacks permission to read this resource.
+      content:
+        text/html:
+          schema:
+            type: string
+          example: <html><body><h2>HTTP ERROR 403 Forbidden</h2></body></html>
+    NotFound:
+      description: No such resource.
+      content:
+        text/html:
+          schema:
+            type: string
+          example: <html><body><h2>HTTP ERROR 404 Not Found</h2></body></html>
+  schemas:
+    ClassName:
+      type: string
+      description: Java class of the object, for example `hudson.model.FreeStyleProject`.
+    ItemRef:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        color:
+          type: string
+          description: Status of the last build. Missing for folders. Ends in `_anime` while building.
+          enum: [blue, blue_anime, red, red_anime, yellow, yellow_anime, grey, grey_anime, disabled, disabled_anime, aborted, aborted_anime, notbuilt, notbuilt_anime]
+    BuildRef:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        number:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+    BuildSummary:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        number:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+        result:
+          type: string
+          nullable: true
+          enum: [SUCCESS, UNSTABLE, FAILURE, NOT_BUILT, ABORTED, null]
+        building:
+          type: boolean
+        timestamp:
+          type: integer
+          format: int64
+          description: Start time in milliseconds since the Unix epoch.
+        duration:
+          type: integer
+          format: int64
+          description: Duration in milliseconds. 0 while building.
+    Controller:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        mode:
+          type: string
+          enum: [NORMAL, EXCLUSIVE]
+        nodeName:
+          type: string
+        nodeDescription:
+          type: string
+        numExecutors:
+          type: integer
+        description:
+          type: string
+          nullable: true
+        quietingDown:
+          type: boolean
+        useSecurity:
+          type: boolean
+        url:
+          type: string
+          format: uri
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRef'
+        views:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRef'
+        primaryView:
+          $ref: '#/components/schemas/ItemRef'
+    WhoAmI:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        name:
+          type: string
+        anonymous:
+          type: boolean
+        authenticated:
+          type: boolean
+        authorities:
+          type: array
+          items:
+            type: string
+    HealthReport:
+      type: object
+      properties:
+        description:
+          type: string
+        score:
+          type: integer
+    Job:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        name:
+          type: string
+        fullName:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+        buildable:
+          type: boolean
+        color:
+          type: string
+        inQueue:
+          type: boolean
+        nextBuildNumber:
+          type: integer
+          format: int64
+        healthReport:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthReport'
+        lastBuild:
+          $ref: '#/components/schemas/BuildRef'
+        lastSuccessfulBuild:
+          $ref: '#/components/schemas/BuildRef'
+        lastFailedBuild:
+          $ref: '#/components/schemas/BuildRef'
+        builds:
+          type: array
+          items:
+            $ref: '#/components/schemas/BuildSummary'
+        jobs:
+          type: array
+          description: Items inside a folder or multibranch project.
+          items:
+            $ref: '#/components/schemas/ItemRef'
+    Build:
+      allOf:
+        - $ref: '#/components/schemas/BuildSummary'
+        - type: object
+          properties:
+            id:
+              type: string
+            displayName:
+              type: string
+            fullDisplayName:
+              type: string
+            description:
+              type: string
+              nullable: true
+            estimatedDuration:
+              type: integer
+              format: int64
+            queueId:
+              type: integer
+              format: int64
+            actions:
+              type: array
+              items:
+                type: object
+                properties:
+                  _class:
+                    $ref: '#/components/schemas/ClassName'
+                  causes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _class:
+                          $ref: '#/components/schemas/ClassName'
+                        shortDescription:
+                          type: string
+                      additionalProperties: true
+                additionalProperties: true
+            artifacts:
+              type: array
+              items:
+                type: object
+                properties:
+                  displayPath:
+                    type: string
+                  fileName:
+                    type: string
+                  relativePath:
+                    type: string
+    QueueItem:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        id:
+          type: integer
+          format: int64
+        blocked:
+          type: boolean
+        buildable:
+          type: boolean
+        stuck:
+          type: boolean
+        cancelled:
+          type: boolean
+          description: Only on items that have left the queue.
+        inQueueSince:
+          type: integer
+          format: int64
+        why:
+          type: string
+          nullable: true
+        url:
+          type: string
+        task:
+          $ref: '#/components/schemas/ItemRef'
+        executable:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/BuildRef'
+          description: The build started from this item, once it has left the queue.
+    Queue:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        discoverableItems:
+          type: array
+          items:
+            type: object
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueueItem'
+    Computer:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        displayName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        idle:
+          type: boolean
+        offline:
+          type: boolean
+        temporarilyOffline:
+          type: boolean
+        offlineCauseReason:
+          type: string
+        numExecutors:
+          type: integer
+        assignedLabels:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+    ComputerSet:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        busyExecutors:
+          type: integer
+        totalExecutors:
+          type: integer
+        displayName:
+          type: string
+        computer:
+          type: array
+          items:
+            $ref: '#/components/schemas/Computer'
+    View:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemRef'
+    Plugin:
+      type: object
+      properties:
+        shortName:
+          type: string
+        longName:
+          type: string
+        version:
+          type: string
+        active:
+          type: boolean
+        enabled:
+          type: boolean
+        hasUpdate:
+          type: boolean
+    PluginManager:
+      type: object
+      properties:
+        _class:
+          $ref: '#/components/schemas/ClassName'
+        plugins:
+          type: array
+          items:
+            $ref: '#/components/schemas/Plugin'
