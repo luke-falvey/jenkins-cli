@@ -9,6 +9,22 @@ requests, so it cannot start, stop or change anything.
 
 ## Install
 
+Download a static Linux binary for amd64 or arm64 from the
+[releases page](https://github.com/luke-falvey/jenkins-cli/releases). The
+binaries have no dependencies, so they run on any Linux distribution:
+
+```sh
+version=v0.1.0
+arch=amd64   # or arm64
+curl -fsSLO "https://github.com/luke-falvey/jenkins-cli/releases/download/$version/jenkins-cli-$version-linux-$arch.tar.gz"
+curl -fsSLO "https://github.com/luke-falvey/jenkins-cli/releases/download/$version/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf "jenkins-cli-$version-linux-$arch.tar.gz"
+sudo install "jenkins-cli-$version-linux-$arch/jenkins-cli" /usr/local/bin/
+```
+
+Or build from source with Rust:
+
 ```sh
 cargo install --path .
 ```
@@ -143,6 +159,27 @@ for example [Prism](https://github.com/stoplightio/prism):
 npx @stoplight/prism-cli mock -p 4010 openapi/jenkins.yaml
 JENKINS_URL=http://localhost:4010/ jenkins-cli builds list deploy
 ```
+
+## Releasing
+
+1. Set the new version in `Cargo.toml`, run `cargo build` to update
+   `Cargo.lock`, and merge that change to `main`.
+2. Tag the merge commit and push the tag:
+
+   ```sh
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The [release workflow](.github/workflows/release.yml) then runs the CI
+checks, and runs the tests and builds static (musl) binaries on native
+amd64 and arm64 runners. It publishes a GitHub release with
+`jenkins-cli-<tag>-linux-<arch>.tar.gz` archives and a `SHA256SUMS` file.
+The workflow fails if the tag does not match the version in `Cargo.toml`.
+A tag with a suffix, such as `v0.2.0-rc.1`, becomes a pre-release.
+
+Pull requests that change the workflow, `Cargo.toml` or `Cargo.lock` run the
+same builds without publishing anything.
 
 ## License
 
